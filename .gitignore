@@ -1,0 +1,8 @@
+*__pycache__*
+*log
+*test*
+./train*
+sampleSubmission.csv
+*temp*
+*data*
+*.zip
