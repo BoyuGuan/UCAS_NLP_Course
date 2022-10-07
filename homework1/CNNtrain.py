@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-09-20 21:31:43
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-09-24 01:46:20
+LastEditTime: 2022-09-24 15:43:02
 FilePath: /guan/ucas/nlp/homework1/trainCNN.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
 '''
@@ -58,9 +58,9 @@ def test(net, criterion, testloader):
 
 def train(net, epochs, criterion, trainloader, testloader):
     net = net.cuda()
-    optimizer = optim.SGD(net.parameters(), lr= 0.01,
+    optimizer = optim.SGD(net.parameters(), lr= 0.005,
                         momentum=0.9, weight_decay=5e-4)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=300)
     for epoch in range(epochs):
         print('\nEpoch: %d' % epoch)
         net.train()
@@ -82,7 +82,7 @@ def train(net, epochs, criterion, trainloader, testloader):
             
             progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                         % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
-        # scheduler.step()
+        scheduler.step()
         test(net, criterion, testloader)
 
 
@@ -106,4 +106,4 @@ if __name__ == "__main__":
     net = torchvision.models.resnet50()
     net.fc = nn.Linear(2048, 2)
     logger.info("Use CNN model resent 50")
-    train(net, 200, nn.CrossEntropyLoss(), trainloader, testloader)
+    train(net, 300, nn.CrossEntropyLoss(), trainloader, testloader)

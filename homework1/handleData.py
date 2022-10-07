@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-09-20 21:18:55
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-09-24 11:18:56
+LastEditTime: 2022-09-26 21:56:41
 FilePath: /guan/ucas/nlp/homework1/handleRawData.py
 Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AEtor
 '''
@@ -37,7 +37,6 @@ def splitTrainData(trainDataPath:str ):
 def makeDatasetToSquqre():
     """将原始数据集转换为方形
     """
-    
     os.makedirs(os.path.join('./data1', 'cat'), exist_ok=True)
     os.makedirs(os.path.join('./data1', 'dog'), exist_ok=True)
     classNames = ['cat', 'dog']
@@ -55,12 +54,19 @@ def makeDatasetToSquqre():
         width, height = image.size
         newLen = min(width, height)
         image = image.crop((  int((width-newLen)/2), int((height-newLen)/2), int((width-newLen)/2) + newLen,  int((height-newLen)/2) + newLen))
-        image.save(os.path.join('./data1', className, imageName))
-    
-    
+        image.save(os.path.join('./test', imageName))
 
 
 def prepaingData(rootpath='./data', batchSize=32):
+    """返回dataloader
+
+    Args:
+        rootpath (str, optional): 数据集地址. Defaults to './data'.
+        batchSize (int, optional): 批大小. Defaults to 32.
+
+    Returns:
+        trainloader, testloader, classe: 训练和测试的dataloader以及类别
+    """
     transform_train = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(),

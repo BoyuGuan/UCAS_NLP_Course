@@ -1,11 +1,3 @@
-'''
-Author: Jack Guan cnboyuguan@gmail.com
-Date: 2022-09-21 21:23:04
-LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-09-26 22:58:24
-FilePath: /guan/ucas/nlp/homework1/DNNtrain.py
-Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
-'''
 import logging
 import os
 from datetime import datetime
@@ -17,32 +9,32 @@ import torch.optim as optim
 from utils import progress_bar
 from handleData import prepaingData
 
-logger = logging.getLogger('myDNNTrain')
+logger = logging.getLogger('myRNNTrain')
 formatter = logging.Formatter('%(asctime)s : %(name)s - %(levelname)s - %(message)s')
 logger.setLevel(logging.INFO) 
-logDir = './log/' + 'DNN_' + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+logDir = './log/' + 'RNN_' + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 best_acc = 0
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-class DNN(nn.Module):
-    def __init__(self):
-        super(DNN, self).__init__()
-        self.flatten = nn.Flatten()
-        self.linear_relu_stack = nn.Sequential(
-            nn.Linear(3*224*224, 1024),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(512, 2)
-        )
+class RNN(nn.Module):
+    def __init__(self, in_feature=3*224, hidden_feature=1000, num_class=2, num_layers=2):
+        super(RNN, self).__init__()
+        self.rnn = nn.GRU(in_feature, hidden_feature, num_layers) # 使用两层 lstm
+        self.classifier = nn.Linear(hidden_feature, num_class) # 将最后一个 rnn 的输出使用全连接得到最后的分类结果
+
     def forward(self, x):
-        x = self.flatten(x)
-        logits = self.linear_relu_stack(x)
-        return logits
+        '''
+        x 大小为 (batch, 3, 224, 224)，所以我们需要将其转换成 RNN 的输入形式，即 (224, batch, 224)
+        '''
+        x = x.permute(0,2,3,1) # 将 x 的维度转换成 (batch, 224, 224, 3)
+        x = x.reshape(x.shape[0], x.shape[1], -1) # 将 x 的维度转换成 (batch, 224, 224*3)
+        x = x.permute(1, 0, 2) # 将最后一维放到第一维，变成 (224, batch, 3*224)，也即每次输入的维度为3*224，输入224次
+        out, _ = self.rnn(x) # 使用默认的隐藏状态，得到的 out 是 (3*224, batch, hidden_feature)
+        out = out[-1] # 取序列中的最后一个，大小是 (batch, hidden_feature)
+        out = self.classifier(out) # 得到分类结果
+        return out
 
 
 def test(net, criterion, testloader):
@@ -105,7 +97,7 @@ def train(net, epochs, criterion, trainloader, testloader):
 
 if __name__ == "__main__":
     os.makedirs(logDir,exist_ok=True)
-    fileHandler = logging.FileHandler(os.path.join(logDir, 'DNNtrain.log') )
+    fileHandler = logging.FileHandler(os.path.join(logDir, 'RNNtrain.log') )
     fileHandler.setLevel(logging.INFO)
     fileHandler.setFormatter(formatter)
     commandHandler = logging.StreamHandler()
@@ -118,6 +110,6 @@ if __name__ == "__main__":
     trainloader, testloader, classes = prepaingData('./data1')
     logger.info('Data prepared')
 
-    net = DNN()
-    logger.info("Use DNN model")
+    net = RNN()
+    logger.info("Use RNN model")
     train(net, 300, nn.CrossEntropyLoss(), trainloader, testloader)
