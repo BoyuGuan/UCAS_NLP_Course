@@ -21,19 +21,16 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 class RNN(nn.Module):
     def __init__(self, in_feature=3*224, hidden_feature=1000, num_class=2, num_layers=2):
         super(RNN, self).__init__()
-        self.rnn = nn.GRU(in_feature, hidden_feature, num_layers) # 使用两层 lstm
-        self.classifier = nn.Linear(hidden_feature, num_class) # 将最后一个 rnn 的输出使用全连接得到最后的分类结果
+        self.rnn = nn.GRU(in_feature, hidden_feature, num_layers) # 使用两层 GRU
+        self.classifier = nn.Linear(hidden_feature, num_class) 
 
     def forward(self, x):
-        '''
-        x 大小为 (batch, 3, 224, 224)，所以我们需要将其转换成 RNN 的输入形式，即 (224, batch, 224)
-        '''
-        x = x.permute(0,2,3,1) # 将 x 的维度转换成 (batch, 224, 224, 3)
-        x = x.reshape(x.shape[0], x.shape[1], -1) # 将 x 的维度转换成 (batch, 224, 224*3)
-        x = x.permute(1, 0, 2) # 将最后一维放到第一维，变成 (224, batch, 3*224)，也即每次输入的维度为3*224，输入224次
-        out, _ = self.rnn(x) # 使用默认的隐藏状态，得到的 out 是 (3*224, batch, hidden_feature)
-        out = out[-1] # 取序列中的最后一个，大小是 (batch, hidden_feature)
-        out = self.classifier(out) # 得到分类结果
+        x = x.permute(0,2,3,1) # 此步与下一步是为了将每一列3个通道的像素值放在一起
+        x = x.reshape(x.shape[0], x.shape[1], -1) 
+        x = x.permute(1, 0, 2) # 将最后一维放到第一维，变成每次输入的维度为3*224，输入224次
+        out, _ = self.rnn(x) 
+        out = out[-1] # 取序列中的最后一个输出
+        out = self.classifier(out) # 将其导入全连接层分类
         return out
 
 
