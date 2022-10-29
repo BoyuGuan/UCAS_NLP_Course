@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-24 22:32:11
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-10-28 15:20:22
+LastEditTime: 2022-10-29 15:22:34
 FilePath: /guan/ucas/nlp/homework2/train.py
 Description: 
 
@@ -75,7 +75,7 @@ def train(net, lossFunction, trainDataIter, testDataIter, lr, num_epochs, device
             l = l.sum()
             epochLoss += l / num_batches
             if i % 20 == 0:
-                print(f'epoch {epoch}, batch {i}/{num_batches}. The loss is {l}')
+                print(f'epoch {epoch + 1}, batch {i}/{num_batches}. The loss is {l}')
             l.backward()
             optimizer.step()
         if epochLoss < minLossTrain:
@@ -90,6 +90,7 @@ def test(net, criterion, data_iter, epoch, device = 'cuda' ):
     net.eval()
     with torch.no_grad():
         loss = criterion
+        epochLoss = 0
         num_batches = len(data_iter)
         for _, batch in enumerate(data_iter):
             center, context_negative, mask, label = [data.to(device) for data in batch]
@@ -98,12 +99,12 @@ def test(net, criterion, data_iter, epoch, device = 'cuda' ):
                      / mask.sum(axis=1) * mask.shape[1])
             l = l.sum()
             epochLoss += l / num_batches
-            if l < minLossTest:
-                minLossTest = l
-                logger.info(f'**** *** epoch {epoch + 1} get MIN test loss, is {l}')
-                torch.save(net.state_dict(), os.path.join(logDir, 'net.pt'))
-            else:
-                logger.info(f'epoch {epoch + 1} get test loss, is {l}')
+        if epochLoss < minLossTest:
+            minLossTest = epochLoss
+            logger.info(f'**** *** epoch {epoch + 1} get MIN test loss, is {epochLoss}')
+            torch.save(net.state_dict(), os.path.join(logDir, 'net.pt'))
+        else:
+            logger.info(f'epoch {epoch + 1} get test loss, is {epochLoss}')
             
 
 def get_similar_tokens(query_token, k, embed, vocab):
@@ -138,7 +139,7 @@ if __name__ == '__main__':
     with open( os.path.join(logDir,'vocab_token2idx.pkl') , 'wb') as f:
         pickle.dump(vocab.token_to_idx, f)
 
-    lr, num_epochs = 0.002, 200
+    lr, num_epochs = 0.002, 500
     net = getNet(len(vocab))
     logger.info(f'Data prepared, len of vocab is {len(vocab)}')
     logger.info('Start training')
