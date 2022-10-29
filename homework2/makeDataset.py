@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-13 20:17:46
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-10-26 23:44:09
+LastEditTime: 2022-10-28 15:12:45
 FilePath: /guan/ucas/nlp/homework2/makeDataset.py
 Description: 
 
@@ -44,8 +44,7 @@ class Vocab:
                                    reverse=True)
         # The index for the unknown token is 0
         self.idx_to_token = ['<unk>'] + reserved_tokens
-        self.token_to_idx = {token: idx
-                             for idx, token in enumerate(self.idx_to_token)}
+        self.token_to_idx = {token: idx for idx, token in enumerate(self.idx_to_token)}
         for token, freq in self._token_freqs:
             if freq < min_freq:
                 break
@@ -178,27 +177,34 @@ def batchify(data):
         cur_len = len(context) + len(negative)
         centers += [center]
         # 将其改成等长的返回数组
-        contexts_negatives += \
-            [context + negative + [0] * (max_len - cur_len)]
+        contexts_negatives += [context + negative + [0] * (max_len - cur_len)]
         masks += [[1] * cur_len + [0] * (max_len - cur_len)] # 有意义的值
         labels += [[1] * len(context) + [0] * (max_len - len(context))] # 是正确上下文的值
     return (torch.tensor(centers).reshape((-1, 1)), torch.tensor(
         contexts_negatives), torch.tensor(masks), torch.tensor(labels))
 
 #@save
-def load_data_loader(batch_size, max_window_size, num_noise_words, datasetPath = './data/renmin.txt'):
+def load_data_loader(batch_size, max_window_size, num_noise_words, \
+    trainDatasetPath, testDatasetPath ):
     """下载PTB数据集，然后将其加载到内存中"""
     num_workers = 0
-    sentences = read_txt(datasetPath)
-    vocab = Vocab(sentences, min_freq=10)
-    subsampled, counter = subsample(sentences, vocab)
-    corpus = [vocab[line] for line in subsampled]
-    all_centers, all_contexts = get_centers_and_contexts(
-        corpus, max_window_size)
-    all_negatives = get_negatives(
-        all_contexts, vocab, counter, num_noise_words)
+    trainSentences = read_txt(trainDatasetPath)
+    testSentences = read_txt(testDatasetPath)
+    allVocab = Vocab(trainSentences + testSentences, min_freq=10)
+    trainSubsampled, trainCounter = subsample(trainSentences, allVocab)
+    testSubsampled, testCounter = subsample(testSentences, allVocab)
+    trainCorpus = [allVocab[line] for line in trainSubsampled]
+    testCorpus = [allVocab[line] for line in testSubsampled]
+    trainAllCenters, trainAllContexts = get_centers_and_contexts(
+        trainCorpus, max_window_size)
+    trainAllNegatives = get_negatives(
+        trainAllContexts, allVocab, trainCounter, num_noise_words)
+    testAllCenters, testAllContexts = get_centers_and_contexts(
+        testCorpus, max_window_size)
+    testAllNegatives = get_negatives(
+        testAllContexts, allVocab, testCounter, num_noise_words)
 
-    class PTBDataset(torch.utils.data.Dataset):
+    class renMinDataset(torch.utils.data.Dataset):
         def __init__(self, centers, contexts, negatives):
             # 长度必然相等，是文本中每一个被选出来的词的中心词（自己），
             # 上下文词（一个装有上下文的list），负采样词（装有负采样元素的K倍长于上下文词的list）
@@ -215,12 +221,16 @@ def load_data_loader(batch_size, max_window_size, num_noise_words, datasetPath =
 
         def __len__(self):
             return len(self.centers)
-    dataset = PTBDataset(all_centers, all_contexts, all_negatives)
-    data_iter = torch.utils.data.DataLoader(
-        dataset, batch_size, shuffle=True,
+    trainDataset = renMinDataset(trainAllCenters, trainAllContexts, trainAllNegatives)
+    testDataset = renMinDataset(testAllCenters, testAllContexts, testAllNegatives)
+    trainDataIter = torch.utils.data.DataLoader(
+        trainDataset, batch_size, shuffle=True,
+        collate_fn=batchify, num_workers=num_workers)
+    testDataIter = torch.utils.data.DataLoader(
+        testDataset, batch_size, shuffle=True,
         collate_fn=batchify, num_workers=num_workers)
 # 在创建DataLoader类的对象时，collate_fn函数会将batch_size个样本整理成一个batch样本，便于批量训练。
-    return data_iter, vocab
+    return trainDataIter, testDataIter, allVocab
 
 if __name__ == '__main__':
     data_iter, vocab = load_data_loader(2, 5, 2)

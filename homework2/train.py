@@ -2,20 +2,29 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-24 22:32:11
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-10-26 23:45:15
+LastEditTime: 2022-10-28 15:20:22
 FilePath: /guan/ucas/nlp/homework2/train.py
 Description: 
 
 Copyright (c) 2022 by Jack Guan cnboyuguan@gmail.com, All Rights Reserved. 
 '''
-import math
+import logging
+import os
+from datetime import datetime
+from numpy import corrcoef, number
+import pickle
+
 import torch
 from torch import nn
-from d2l import torch as d2l
 
 import makeDataset
 
+logger = logging.getLogger('word2vector')
+formatter = logging.Formatter('%(asctime)s : %(name)s - %(levelname)s - %(message)s')
+logger.setLevel(logging.INFO) 
+logDir = './log/' + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
+minLossTest = 6666666
 
 def skip_gram(center, contexts_and_negatives, embed_v, embed_u):
     v = embed_v(center)
@@ -34,28 +43,30 @@ class SigmoidBCELoss(nn.Module):
         return out.mean(dim=1)
 
 
-def getNet(embed_size = 100):
-    net = nn.Sequential(nn.Embedding(num_embeddings=len(vocab),
+def getNet(num_embeddings, embed_size = 100):
+    net = nn.Sequential(nn.Embedding(num_embeddings=num_embeddings,
                                     embedding_dim=embed_size),
-                        nn.Embedding(num_embeddings=len(vocab),
+                        nn.Embedding(num_embeddings=num_embeddings,
                                     embedding_dim=embed_size))
     return net
 
-def train(net, data_iter, lr, num_epochs, device='cuda'):
+def train(net, lossFunction, trainDataIter, testDataIter, lr, num_epochs, device='cuda'):
     def init_weights(m):
         if type(m) == nn.Embedding:
             nn.init.xavier_uniform_(m.weight)
     net.apply(init_weights)
-    loss = SigmoidBCELoss()
+    loss = lossFunction
     net = net.to(device)
-    minLoss = 1666666
+    minLossTrain = 1666666
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     # 规范化的损失之和，规范化的损失数
     for epoch in range(num_epochs):
-        print(f'The {epoch + 1}th epoch')
-        num_batches = len(data_iter)
+        logger.info(f'The {epoch + 1}th epoch')
+        num_batches = len(trainDataIter)
         epochLoss = 0
-        for i, batch in enumerate(data_iter):
+        net.train()
+        logger.info('\n epoch {epoch + 1} start train')
+        for i, batch in enumerate(trainDataIter):
             optimizer.zero_grad()
             center, context_negative, mask, label = [data.to(device) for data in batch]
             pred = skip_gram(center, context_negative, net[0], net[1])
@@ -63,17 +74,39 @@ def train(net, data_iter, lr, num_epochs, device='cuda'):
                      / mask.sum(axis=1) * mask.shape[1])
             l = l.sum()
             epochLoss += l / num_batches
-            if i % 10 == 0:
-                print(f'The loss is {l}')
+            if i % 20 == 0:
+                print(f'epoch {epoch}, batch {i}/{num_batches}. The loss is {l}')
             l.backward()
             optimizer.step()
-        if epochLoss < minLoss:
-            minLoss = epochLoss
-            print(f'min loss is {minLoss}')
-            torch.save(net.state_dict(), './log/net.pt')
+        if epochLoss < minLossTrain:
+            minLossTrain = epochLoss
+            logger.info(f'***epoch {epoch + 1} get MIN train loss, is {minLossTrain}')
+        else:
+            logger.info(f'epoch {epoch + 1} loos is {epochLoss}')
+        test(net, loss, testDataIter, epoch, device)
+    
+def test(net, criterion, data_iter, epoch, device = 'cuda' ):
+    global minLossTest
+    net.eval()
+    with torch.no_grad():
+        loss = criterion
+        num_batches = len(data_iter)
+        for _, batch in enumerate(data_iter):
+            center, context_negative, mask, label = [data.to(device) for data in batch]
+            pred = skip_gram(center, context_negative, net[0], net[1])
+            l = (loss(pred.reshape(label.shape).float(), label.float(), mask)
+                     / mask.sum(axis=1) * mask.shape[1])
+            l = l.sum()
+            epochLoss += l / num_batches
+            if l < minLossTest:
+                minLossTest = l
+                logger.info(f'**** *** epoch {epoch + 1} get MIN test loss, is {l}')
+                torch.save(net.state_dict(), os.path.join(logDir, 'net.pt'))
+            else:
+                logger.info(f'epoch {epoch + 1} get test loss, is {l}')
+            
 
-
-def get_similar_tokens(query_token, k, embed):
+def get_similar_tokens(query_token, k, embed, vocab):
     W = embed.weight.data
     x = W[vocab[query_token]]
     # 计算余弦相似性。增加1e-9以获得数值稳定性
@@ -83,10 +116,34 @@ def get_similar_tokens(query_token, k, embed):
     for i in topk[1:]:  # 删除输入词
         print(f'cosine sim={float(cos[i]):.3f}: {vocab.to_tokens(i)}')
 
+
+
 if __name__ == '__main__':
-    batch_size, max_window_size, num_noise_words = 512, 5, 5
-    data_iter, vocab = makeDataset.load_data_loader(batch_size, max_window_size,num_noise_words)
-    lr, num_epochs = 0.002, 500
-    net = getNet()
-    train(net, data_iter, lr, num_epochs)
-    get_similar_tokens('中国', 3, net[0])
+    os.makedirs(logDir,exist_ok=True)
+    fileHandler = logging.FileHandler(os.path.join(logDir, 'train.log') )
+    fileHandler.setLevel(logging.INFO)
+    fileHandler.setFormatter(formatter)
+    commandHandler = logging.StreamHandler()
+    commandHandler.setLevel(logging.INFO)
+    commandHandler.setFormatter(formatter)
+    logger.addHandler(fileHandler)
+    logger.addHandler(commandHandler)
+
+    logger.info('Preparing data...')
+    batch_size, max_window_size, num_noise_words = 2048, 5, 5
+    trainDataIter, testDataIter, vocab = makeDataset.load_data_loader(batch_size,\
+        max_window_size, num_noise_words, './data/renmin_tiny2.txt', './data/renmin_tiny2_test.txt')
+    with open( os.path.join(logDir,'vocab_idx2token.pkl') , 'wb') as f:
+        pickle.dump(vocab.idx_to_token, f)
+    with open( os.path.join(logDir,'vocab_token2idx.pkl') , 'wb') as f:
+        pickle.dump(vocab.token_to_idx, f)
+
+    lr, num_epochs = 0.002, 200
+    net = getNet(len(vocab))
+    logger.info(f'Data prepared, len of vocab is {len(vocab)}')
+    logger.info('Start training')
+    loss = SigmoidBCELoss()
+    train(net, loss, trainDataIter, testDataIter, lr, num_epochs)
+    logger.info('Training finished')
+    
+    # get_similar_tokens('中国', 3, net[0], vocab)
