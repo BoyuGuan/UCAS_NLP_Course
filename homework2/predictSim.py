@@ -1,3 +1,13 @@
+'''
+Author: Jack Guan cnboyuguan@gmail.com
+Date: 2022-10-27 16:33:07
+LastEditors: Jack Guan cnboyuguan@gmail.com
+LastEditTime: 2022-10-30 19:02:10
+FilePath: /guan/ucas/nlp/homework2/predictSim.py
+Description: 
+
+Copyright (c) 2022 by Jack Guan cnboyuguan@gmail.com, All Rights Reserved. 
+'''
 from cmath import log
 import pickle
 import os
@@ -18,18 +28,18 @@ def get_similar_tokens(query_token, k, embed, token_to_idx, idx_to_token):
         print(f'cosine sim={float(cos[i]):.3f}: {idx_to_token[i]}')
 
 if __name__ == '__main__':
-    logDir = './log/2022-10-27-16-58-47'
+    logDir = './log/renmin'
     with open(os.path.join(logDir, 'vocab_idx2token.pkl') , 'rb') as f:
         idx_to_token = pickle.load(f)
     with open(os.path.join(logDir, 'vocab_token2idx.pkl'), 'rb') as f:
         token_to_idx = pickle.load(f)
-    batch_size, max_window_size, num_noise_words = 2048, 5, 5
+    # batch_size, max_window_size, num_noise_words = 2048, 5, 5
     # data_iter, vocab = makeDataset.load_data_loader(batch_size,\
     #     max_window_size,num_noise_words, './data/renmin_tiny.txt')
     # print(len(vocab))
-    embed = train.getNet(20875)
+    embed = train.getNet(49324)
     embed.load_state_dict(torch.load(os.path.join(logDir ,'net.pt')))
     embed = embed[0]
 
 
-    get_similar_tokens('欧洲', 3, embed, token_to_idx, idx_to_token)
+    get_similar_tokens('清华大学', 10, embed, token_to_idx, idx_to_token)

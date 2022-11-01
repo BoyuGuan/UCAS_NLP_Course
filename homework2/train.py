@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-24 22:32:11
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-10-29 15:22:34
+LastEditTime: 2022-11-01 11:26:31
 FilePath: /guan/ucas/nlp/homework2/train.py
 Description: 
 
@@ -65,7 +65,7 @@ def train(net, lossFunction, trainDataIter, testDataIter, lr, num_epochs, device
         num_batches = len(trainDataIter)
         epochLoss = 0
         net.train()
-        logger.info('\n epoch {epoch + 1} start train')
+        logger.info(f'epoch {epoch + 1} start train')
         for i, batch in enumerate(trainDataIter):
             optimizer.zero_grad()
             center, context_negative, mask, label = [data.to(device) for data in batch]
@@ -101,10 +101,10 @@ def test(net, criterion, data_iter, epoch, device = 'cuda' ):
             epochLoss += l / num_batches
         if epochLoss < minLossTest:
             minLossTest = epochLoss
-            logger.info(f'**** *** epoch {epoch + 1} get MIN test loss, is {epochLoss}')
+            logger.info(f'**** *** epoch {epoch + 1} get MIN test loss, is {epochLoss}\n')
             torch.save(net.state_dict(), os.path.join(logDir, 'net.pt'))
         else:
-            logger.info(f'epoch {epoch + 1} get test loss, is {epochLoss}')
+            logger.info(f'epoch {epoch + 1} get test loss, is {epochLoss} \n')
             
 
 def get_similar_tokens(query_token, k, embed, vocab):
@@ -130,10 +130,12 @@ if __name__ == '__main__':
     logger.addHandler(fileHandler)
     logger.addHandler(commandHandler)
 
+    zh, en = 0, 1
+    trainFile, testFile = [  ('./data/renmin_tiny2.txt', './data/renmin_tiny2_test.txt'), ('./data/cnn.txt', './data/cnn_test.txt')][en]
     logger.info('Preparing data...')
     batch_size, max_window_size, num_noise_words = 2048, 5, 5
     trainDataIter, testDataIter, vocab = makeDataset.load_data_loader(batch_size,\
-        max_window_size, num_noise_words, './data/renmin_tiny2.txt', './data/renmin_tiny2_test.txt')
+        max_window_size, num_noise_words, trainFile, testFile)
     with open( os.path.join(logDir,'vocab_idx2token.pkl') , 'wb') as f:
         pickle.dump(vocab.idx_to_token, f)
     with open( os.path.join(logDir,'vocab_token2idx.pkl') , 'wb') as f:
