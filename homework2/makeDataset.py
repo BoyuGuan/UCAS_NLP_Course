@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-13 20:17:46
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-10-28 15:12:45
+LastEditTime: 2022-11-01 16:11:41
 FilePath: /guan/ucas/nlp/homework2/makeDataset.py
 Description: 
 
@@ -183,7 +183,6 @@ def batchify(data):
     return (torch.tensor(centers).reshape((-1, 1)), torch.tensor(
         contexts_negatives), torch.tensor(masks), torch.tensor(labels))
 
-#@save
 def load_data_loader(batch_size, max_window_size, num_noise_words, \
     trainDatasetPath, testDatasetPath ):
     """下载PTB数据集，然后将其加载到内存中"""
@@ -206,8 +205,9 @@ def load_data_loader(batch_size, max_window_size, num_noise_words, \
 
     class renMinDataset(torch.utils.data.Dataset):
         def __init__(self, centers, contexts, negatives):
-            # 长度必然相等，是文本中每一个被选出来的词的中心词（自己），
-            # 上下文词（一个装有上下文的list），负采样词（装有负采样元素的K倍长于上下文词的list）
+            # 长度必然相等，centers每个元素是文本中每一个被选出来的词的中心词（自己），
+            # context每个元素是上下文词（一个装有上下文的1D list）
+            # negatives每个元素是负采样词（装有负采样元素的K倍长于上下文词的1D list）
             assert len(centers) == len(contexts) == len(negatives)
             self.centers = centers
             self.contexts = contexts
@@ -215,7 +215,7 @@ def load_data_loader(batch_size, max_window_size, num_noise_words, \
 
         def __getitem__(self, index):
             # 取一次取一个tuple，分别是一个中心词，一个1D的上下文list，
-            # 一个是上下文list K倍长的
+            # 一个是上下文list K倍长的1D list
             return (self.centers[index], self.contexts[index],
                     self.negatives[index])
 
