@@ -2,18 +2,27 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-13 20:17:46
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-11-10 21:17:42
-FilePath: /guan/ucas/nlp/homework2/makeDataset.py
+LastEditTime: 2022-11-10 23:01:20
+FilePath: /guan/ucas/nlp/homework3/word2vec.py
 Description: 
 
 Copyright (c) 2022 by Jack Guan cnboyuguan@gmail.com, All Rights Reserved. 
 '''
-import math
+import os
 import random
 import collections
+import logging
+from datetime import datetime
 
+import pickle
 import torch
-from d2l import torch as d2l
+from torch import nn
+
+logger = logging.getLogger('word2vector')
+formatter = logging.Formatter('%(asctime)s : %(name)s - %(levelname)s - %(message)s')
+logger.setLevel(logging.INFO) 
+logDir = './word2vec/'
+minLossTest = 6666666
 
 def count_corpus(tokens):
     """Count token frequencies.
@@ -39,7 +48,7 @@ class Vocab:
         self._token_freqs = sorted(counter.items(), key=lambda x: x[1],
                                    reverse=True)
         # The index for the unknown token is 0
-        self.idx_to_token = ['<unk>'] + reserved_tokens
+        self.idx_to_token = ['unk'] + reserved_tokens
         self.token_to_idx = {token: idx for idx, token in enumerate(self.idx_to_token)}
         for token, freq in self._token_freqs:
             if freq < min_freq:
@@ -99,15 +108,8 @@ def subsample(sentences, vocab):
     sentences = [[token for token in line if vocab[token] != vocab.unk]
                  for line in sentences]
     counter = count_corpus(sentences)
-    num_tokens = sum(counter.values())
 
-    # 如果在下采样期间保留词元，则返回True
-    def keep(token):
-        return(random.uniform(0, 1) <
-               math.sqrt(1e-3 / counter[token] * num_tokens))
-
-    return ([[token for token in line if keep(token)] for line in sentences],
-            counter)
+    return ([[token for token in line] for line in sentences], counter)
 
 def get_centers_and_contexts(corpus, max_window_size):
     """返回跳元模型中的中心词和上下文词
@@ -185,7 +187,7 @@ def load_data_loader(batch_size, max_window_size, num_noise_words, \
     num_workers = 0
     trainSentences = read_txt(trainDatasetPath)
     testSentences = read_txt(testDatasetPath)
-    allVocab = Vocab(trainSentences + testSentences, min_freq=10)
+    allVocab = Vocab(trainSentences + testSentences, min_freq=0, reserved_tokens=['pad'])
     trainSubsampled, trainCounter = subsample(trainSentences, allVocab)
     testSubsampled, testCounter = subsample(testSentences, allVocab)
     trainCorpus = [allVocab[line] for line in trainSubsampled]
@@ -199,7 +201,7 @@ def load_data_loader(batch_size, max_window_size, num_noise_words, \
     testAllNegatives = get_negatives(
         testAllContexts, allVocab, testCounter, num_noise_words)
 
-    class renMinDataset(torch.utils.data.Dataset):
+    class corpusDataset(torch.utils.data.Dataset):
         def __init__(self, centers, contexts, negatives):
             # 长度必然相等，centers每个元素是文本中每一个被选出来的词的中心词（自己），
             # context每个元素是上下文词（一个装有上下文的1D list）
@@ -217,8 +219,8 @@ def load_data_loader(batch_size, max_window_size, num_noise_words, \
 
         def __len__(self):
             return len(self.centers)
-    trainDataset = renMinDataset(trainAllCenters, trainAllContexts, trainAllNegatives)
-    testDataset = renMinDataset(testAllCenters, testAllContexts, testAllNegatives)
+    trainDataset = corpusDataset(trainAllCenters, trainAllContexts, trainAllNegatives)
+    testDataset = corpusDataset(testAllCenters, testAllContexts, testAllNegatives)
     trainDataIter = torch.utils.data.DataLoader(
         trainDataset, batch_size, shuffle=True,
         collate_fn=batchify, num_workers=num_workers)
@@ -228,10 +230,110 @@ def load_data_loader(batch_size, max_window_size, num_noise_words, \
 # 在创建DataLoader类的对象时，collate_fn函数会将batch_size个样本整理成一个batch样本，便于批量训练。
     return trainDataIter, testDataIter, allVocab
 
+
+def skip_gram(center, contexts_and_negatives, embed_v, embed_u):
+    v = embed_v(center)
+    u = embed_u(contexts_and_negatives)
+    pred = torch.bmm(v, u.permute(0, 2, 1))
+    return pred
+
+class SigmoidBCELoss(nn.Module):
+    # 带掩码的二元交叉熵损失
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, inputs, target, mask=None):
+        out = nn.functional.binary_cross_entropy_with_logits(
+            inputs, target, weight=mask, reduction="none")
+        return out.mean(dim=1)
+
+
+def getNet(num_embeddings, embed_size = 300):
+    net = nn.Sequential(nn.Embedding(num_embeddings=num_embeddings,
+                                    embedding_dim=embed_size),
+                        nn.Embedding(num_embeddings=num_embeddings,
+                                    embedding_dim=embed_size))
+    return net
+
+def train(net, lossFunction, trainDataIter, testDataIter, lr, num_epochs, device='cuda'):
+    def init_weights(m):
+        if type(m) == nn.Embedding:
+            nn.init.xavier_uniform_(m.weight)
+    net.apply(init_weights)
+    loss = lossFunction
+    net = net.to(device)
+    minLossTrain = 666666
+    optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+    # 规范化的损失之和，规范化的损失数
+    for epoch in range(num_epochs):
+        logger.info(f'The {epoch + 1}th epoch')
+        num_batches = len(trainDataIter)
+        epochLoss = 0
+        net.train()
+        logger.info(f'epoch {epoch + 1} start train')
+        for i, batch in enumerate(trainDataIter):
+            optimizer.zero_grad()
+            center, context_negative, mask, label = [data.to(device) for data in batch]
+            pred = skip_gram(center, context_negative, net[0], net[1])
+            l = (loss(pred.reshape(label.shape).float(), label.float(), mask)
+                     / mask.sum(axis=1) * mask.shape[1])
+            l = l.sum()
+            epochLoss += l / num_batches
+            if i % 20 == 0:
+                print(f'epoch {epoch + 1}, batch {i}/{num_batches}. The loss is {l}')
+            l.backward()
+            optimizer.step()
+        if epochLoss < minLossTrain:
+            minLossTrain = epochLoss
+            logger.info(f'***epoch {epoch + 1} get MIN train loss, is {minLossTrain}')
+        else:
+            logger.info(f'epoch {epoch + 1} loos is {epochLoss}')
+        test(net, loss, testDataIter, epoch, device)
+    
+def test(net, criterion, data_iter, epoch, device = 'cuda' ):
+    global minLossTest
+    net.eval()
+    with torch.no_grad():
+        loss = criterion
+        epochLoss = 0
+        num_batches = len(data_iter)
+        for _, batch in enumerate(data_iter):
+            center, context_negative, mask, label = [data.to(device) for data in batch]
+            pred = skip_gram(center, context_negative, net[0], net[1])
+            l = (loss(pred.reshape(label.shape).float(), label.float(), mask)
+                     / mask.sum(axis=1) * mask.shape[1])
+            l = l.sum()
+            epochLoss += l / num_batches
+        if epochLoss < minLossTest:
+            minLossTest = epochLoss
+            logger.info(f'**** *** epoch {epoch + 1} get MIN test loss, is {epochLoss}\n')
+            torch.save(net.state_dict(), os.path.join(logDir, 'net.pt'))
+        else:
+            logger.info(f'epoch {epoch + 1} get test loss, is {epochLoss} \n')
+
 if __name__ == '__main__':
-    data_iter, vocab = load_data_loader(2, 5, 2)
-    for batch in data_iter:
-        for name, data in zip(['centers', 'contexts_negatives', 'masks',
-                               'labels'], batch):
-            print(name, 'shape:', data.shape)
-        break
+    os.makedirs(logDir,exist_ok=True)
+    fileHandler = logging.FileHandler(os.path.join(logDir, 'train.log') )
+    fileHandler.setLevel(logging.INFO)
+    fileHandler.setFormatter(formatter)
+    commandHandler = logging.StreamHandler()
+    commandHandler.setLevel(logging.INFO)
+    commandHandler.setFormatter(formatter)
+    logger.addHandler(fileHandler)
+    logger.addHandler(commandHandler)
+
+
+    logger.info('Preparing data...')
+    trainFile, testFile = './data/train_corpus.txt', './data/test_corpus.txt'
+    batch_size, max_window_size, num_noise_words = 2048, 5, 5
+    trainDataIter, testDataIter, vocab = load_data_loader(batch_size,\
+        max_window_size, num_noise_words, trainFile, testFile)
+    with open( os.path.join(logDir,'vocab_word2idx.pkl') , 'wb') as f:
+        pickle.dump(vocab.token_to_idx, f)
+    lr, num_epochs = 0.002, 5
+    net = getNet(len(vocab))
+    logger.info(f'Data prepared, len of vocab is {len(vocab)}')
+    logger.info('Start training')
+    loss = SigmoidBCELoss()
+    logger.info("start training")
+    train(net, loss, trainDataIter, testDataIter, lr, num_epochs)

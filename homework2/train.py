@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-24 22:32:11
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-11-01 11:26:31
+LastEditTime: 2022-11-10 22:56:58
 FilePath: /guan/ucas/nlp/homework2/train.py
 Description: 
 
@@ -11,7 +11,6 @@ Copyright (c) 2022 by Jack Guan cnboyuguan@gmail.com, All Rights Reserved.
 import logging
 import os
 from datetime import datetime
-from numpy import corrcoef, number
 import pickle
 
 import torch
@@ -105,19 +104,6 @@ def test(net, criterion, data_iter, epoch, device = 'cuda' ):
             torch.save(net.state_dict(), os.path.join(logDir, 'net.pt'))
         else:
             logger.info(f'epoch {epoch + 1} get test loss, is {epochLoss} \n')
-            
-
-def get_similar_tokens(query_token, k, embed, vocab):
-    W = embed.weight.data
-    x = W[vocab[query_token]]
-    # 计算余弦相似性。增加1e-9以获得数值稳定性
-    cos = torch.mv(W, x) / torch.sqrt(torch.sum(W * W, dim=1) *
-                                      torch.sum(x * x) + 1e-9)
-    topk = torch.topk(cos, k=k+1)[1].cpu().numpy().astype('int32')
-    for i in topk[1:]:  # 删除输入词
-        print(f'cosine sim={float(cos[i]):.3f}: {vocab.to_tokens(i)}')
-
-
 
 if __name__ == '__main__':
     os.makedirs(logDir,exist_ok=True)
@@ -141,9 +127,8 @@ if __name__ == '__main__':
     with open( os.path.join(logDir,'vocab_token2idx.pkl') , 'wb') as f:
         pickle.dump(vocab.token_to_idx, f)
 
-    lr, num_epochs = 0.002, 500
+    lr, num_epochs = 0.002, 5
     net = getNet(len(vocab))
-    logger.info(f'Data prepared, len of vocab is {len(vocab)}')
     logger.info('Start training')
     loss = SigmoidBCELoss()
     train(net, loss, trainDataIter, testDataIter, lr, num_epochs)

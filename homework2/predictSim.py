@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-27 16:33:07
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-11-02 19:17:12
+LastEditTime: 2022-11-10 22:56:18
 FilePath: /guan/ucas/nlp/homework2/predictSim.py
 Description: 
 
@@ -30,12 +30,11 @@ def get_similar_tokens(query_token, k, embed, token_to_idx, idx_to_token):
 if __name__ == '__main__':
     en, zh = 0, 1
     logDir = ['./log/cnn', './log/renmin'][zh]
-    vocabLen = [43638, 49324][zh]
     with open(os.path.join(logDir, 'vocab_idx2token.pkl') , 'rb') as f:
         idx_to_token = pickle.load(f)
     with open(os.path.join(logDir, 'vocab_token2idx.pkl'), 'rb') as f:
         token_to_idx = pickle.load(f)
-    embed = train.getNet(vocabLen)
+    embed = train.getNet(len(idx_to_token))
     embed.load_state_dict(torch.load(os.path.join(logDir ,'net.pt')))
     embed = embed[0]
 
