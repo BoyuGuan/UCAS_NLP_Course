@@ -99,7 +99,7 @@ def train(config, model, trainDataloader, optimizer, testDataloader):
                 logger.info(f'epoch: {epoch+1} step:{index}------------loss:{loss.item()}')
         prec, rec, f1 = val(model, optimizer, testDataloader)
         if(f1 > best_f1):
-            torch.save(model, config.save_model)
+            torch.save(model, os.path.join(logDir, 'model.pkl'))
             # break
 
 if __name__ == '__main__':
