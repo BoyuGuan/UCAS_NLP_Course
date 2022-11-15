@@ -2,8 +2,8 @@
  * @Author: Jack Guan cnboyuguan@gmail.com
  * @Date: 2022-11-09 21:39:41
  * @LastEditors: Jack Guan cnboyuguan@gmail.com
- * @LastEditTime: 2022-11-10 17:11:55
- * @FilePath: /guan/ucas/nlp/homework3/sequence_tagging/README.md
+ * @LastEditTime: 2022-11-15 15:04:39
+ * @FilePath: /guan/ucas/nlp/homework3/README.md
  * @Description: 
  * 
  * Copyright (c) 2022 by Jack Guan cnboyuguan@gmail.com, All Rights Reserved. 
@@ -28,3 +28,6 @@
 python train.py
 ```
 测试模型请调用train.py中的val函数
+
+## 踩坑
+想将torch的二维矩阵的第3列统一赋值为0，结果写成了`mat[:][2]=0`，这是不对的，`mat[:]`等同于mat，`mat[:][2]=0`最终的效果等同于`mat[2]=0`变成了将第3行统一赋值为0。正确的写法应该是`mat[:,2]=0`。

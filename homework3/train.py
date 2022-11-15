@@ -1,8 +1,9 @@
 # pytorch code for sequence tagging
 
 # 此版本为简单的NER代码，没有使用CRF和训练好的词向量，仅做参考使用。
-import pickle
+import logging
 import os
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -12,34 +13,13 @@ from torch.optim import Adam, SGD
 
 from utils import  build_dict, cal_max_length, Config
 from word2vec import getNet
-
-os.environ["CUDA_VISIBLE_DEVICES"] = '0'
-
-# TODO 改用训练好的词向量
-# TODO 加上使用CRF
+from model import BiLSTM_CRF
 
 
-class NERLSTM(nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, word2vecEmbedding, dropout, word2id, tag2id):
-        super(NERLSTM, self).__init__()
-
-        self.embedding_dim = embedding_dim
-        self.hidden_dim = hidden_dim
-        self.vocab_size = len(word2id)
-        self.tag_to_ix = tag2id
-        self.tagset_size = len(tag2id)
-
-        self.word_embeds = word2vecEmbedding
-        self.dropout = nn.Dropout(dropout)
-        self.lstm = nn.LSTM(self.embedding_dim, self.hidden_dim // 2, num_layers=1, bidirectional=True, batch_first=True)
-        self.hidden2tag = nn.Linear(self.hidden_dim, self.tagset_size)
-
-    def forward(self, x):
-        embedding = self.word_embeds(x)
-        outputs, hidden = self.lstm(embedding)
-        outputs = self.dropout(outputs)
-        outputs = self.hidden2tag(outputs)
-        return outputs
+logger = logging.getLogger('BiLSTM_CRF')
+formatter = logging.Formatter('%(asctime)s : %(name)s - %(levelname)s - %(message)s')
+logger.setLevel(logging.INFO) 
+logDir = './log/' + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
 
 
@@ -83,67 +63,61 @@ class NERdataset(Dataset):
 
 def val(model, optimizer, dataloader):
     model.eval()
-    loss_function = torch.nn.CrossEntropyLoss(ignore_index=7)  # ignore the pad label
+    logger.info(f'epoch start valding')
     preds, labels = [], []
     for index, data in enumerate(dataloader):
         optimizer.zero_grad()
         corpus, label, length = data
         corpus, label, length = corpus.cuda(), label.cuda(), length.cuda()
-        output = model(corpus)
-        predict = torch.argmax(output, dim=-1)
-        loss = loss_function(output.view(-1, output.size(-1)), label.view(-1))
-        leng = []
-        for i in label.cpu():
-            tmp = []
-            for j in i:
-                if j.item() < 7:
-                    tmp.append(j.item())
-            leng.append(tmp)
-
-        for index, i in enumerate(predict.tolist()):
-            preds.extend(i[:len(leng[index])])
-
-        for index, i in enumerate(label.tolist()):
-            labels.extend(i[:len(leng[index])])
-
+        best_path_all = model(corpus, length)
+        for index, best_path in enumerate(best_path_all):
+            preds.extend(best_path[:length[index]])
+        for index, label_this_sentence in enumerate(label.tolist()):
+            labels.extend(label_this_sentence[:length[index]])
+    preds = [pred.to('cpu').item() for pred in preds]
     precision = precision_score(labels, preds, average='macro')
     recall = recall_score(labels, preds, average='macro', zero_division=1)
     f1 = f1_score(labels, preds, average='macro')
     report = classification_report(labels, preds, zero_division=1)
-    print(report)
-    model.train()
+    logger.info('\n {report}')
     return precision, recall, f1
 
 
-
-
 def train(config, model, trainDataloader, optimizer, testDataloader):
-
-    # ignore the pad label
-    loss_function = torch.nn.CrossEntropyLoss(ignore_index=7)
     best_f1 = 0.0
     for epoch in range(config.epochNum):
         model.train()
+        logger.info(f'epoch: {epoch + 1} start training')
         for index, data in enumerate(trainDataloader):
             optimizer.zero_grad()
-            corpus, label, length = data
-            corpus, label, length = corpus.cuda(), label.cuda(), length.cuda()
-            output = model(corpus)
-            loss = loss_function(output.view(-1, output.size(-1)), label.view(-1))
+            sentence, tag, length = data
+            sentence, tag, length = sentence.cuda(), tag.cuda(), length.cuda()
+            loss = model.neg_log_likelihood(sentence, tag, length)
             loss.backward()
             optimizer.step()
-            if (index % 200 == 0):
-                print('epoch: ', epoch, ' step:%04d,------------loss:%f' % (index, loss.item()))
-
+            if (index % 10 == 0):
+                logger.info(f'epoch: {epoch+1} step:{index}------------loss:{loss.item()}')
         prec, rec, f1 = val(model, optimizer, testDataloader)
         if(f1 > best_f1):
             torch.save(model, config.save_model)
-
+            # break
 
 if __name__ == '__main__':
     config = Config()
-    os.makedirs(config.savePath, exist_ok=True)
 
+    os.makedirs(logDir,exist_ok=True)
+    fileHandler = logging.FileHandler(os.path.join(logDir, 'train.log') )
+    fileHandler.setLevel(logging.INFO)
+    fileHandler.setFormatter(formatter)
+    commandHandler = logging.StreamHandler()
+    commandHandler.setLevel(logging.INFO)
+    commandHandler.setFormatter(formatter)
+    logger.addHandler(fileHandler)
+    logger.addHandler(commandHandler)
+
+
+
+    logger.info('loading data...')
     word2id, tag2id = build_dict()
     max_length = cal_max_length(config.data_dir)
     trainset = NERdataset(config.data_dir, 'train', word2id, tag2id, max_length)
@@ -151,15 +125,17 @@ if __name__ == '__main__':
     testset = NERdataset(config.data_dir, 'test', word2id, tag2id, max_length)
     testDataloader = DataLoader(testset, batch_size=config.batch_size)
 
+    logger.info('loading embedding...')
     word2vecEmbedding = getNet(len(word2id))
     word2vecEmbedding.load_state_dict(torch.load(os.path.join('word2vec' ,'net.pt')))
-    word2vecEmbedding = word2vecEmbedding[0]
-    nerlstm = NERLSTM(config.embedding_dim, config.hidden_dim, word2vecEmbedding, config.dropout, word2id, tag2id).cuda()
+    word2vecEmbedding = word2vecEmbedding[0].cuda()
+    # nerlstm = NERLSTM(config.embedding_dim, config.hidden_dim, word2vecEmbedding, config.dropout, word2id, tag2id).cuda()
+    nerlstm = BiLSTM_CRF(config.embedding_dim, config.hidden_dim, word2vecEmbedding, tag2id).cuda()
+    optimizer = SGD(nerlstm.parameters(), config.learning_rate, weight_decay=config.weight_decay)
 
     # 词向量嵌入层不再需要调整
     for para in nerlstm.word_embeds.parameters():
         para.requires_grad = False
-    
-    optimizer = Adam(nerlstm.parameters(), config.learning_rate)
+    logger.info('start training...')
     train(config, nerlstm, trainDataloader, optimizer, testDataloader)
 

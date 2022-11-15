@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-13 20:17:46
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-11-10 23:01:20
+LastEditTime: 2022-11-12 20:12:39
 FilePath: /guan/ucas/nlp/homework3/word2vec.py
 Description: 
 
@@ -45,10 +45,9 @@ class Vocab:
             reserved_tokens = []
         # Sort according to frequencies
         counter = count_corpus(tokens)
-        self._token_freqs = sorted(counter.items(), key=lambda x: x[1],
-                                   reverse=True)
+        self._token_freqs = sorted(counter.items(), key=lambda x: x[1], reverse=True)
         # The index for the unknown token is 0
-        self.idx_to_token = ['unk'] + reserved_tokens
+        self.idx_to_token = [ 'pad', 'unk']  + reserved_tokens
         self.token_to_idx = {token: idx for idx, token in enumerate(self.idx_to_token)}
         for token, freq in self._token_freqs:
             if freq < min_freq:
@@ -72,7 +71,7 @@ class Vocab:
 
     @property
     def unk(self):  # Index for the unknown token
-        return 0
+        return 1
 
     @property
     def token_freqs(self):  # Index for the unknown token
@@ -187,7 +186,7 @@ def load_data_loader(batch_size, max_window_size, num_noise_words, \
     num_workers = 0
     trainSentences = read_txt(trainDatasetPath)
     testSentences = read_txt(testDatasetPath)
-    allVocab = Vocab(trainSentences + testSentences, min_freq=0, reserved_tokens=['pad'])
+    allVocab = Vocab(trainSentences + testSentences, min_freq=2 )
     trainSubsampled, trainCounter = subsample(trainSentences, allVocab)
     testSubsampled, testCounter = subsample(testSentences, allVocab)
     trainCorpus = [allVocab[line] for line in trainSubsampled]

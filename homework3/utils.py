@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-11-09 21:39:41
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-11-10 22:54:00
+LastEditTime: 2022-11-15 16:32:03
 FilePath: /guan/ucas/nlp/homework3/utils.py
 Description: 
 
@@ -10,6 +10,7 @@ Copyright (c) 2022 by Jack Guan cnboyuguan@gmail.com, All Rights Reserved.
 '''
 import os
 import pickle
+import torch
 
 # config for training
 class Config():
@@ -17,8 +18,9 @@ class Config():
     def __init__(self):
 
         self.learning_rate = 1e-4
+        self.weight_decay = 1e-5
         self.dropout = 0.9
-        self.epochNum = 10
+        self.epochNum = 50
         self.data_dir = './data/'
         self.savePath = './toUse/' # 存放词向量等中间件
         self.embedding_dim = 300
@@ -27,13 +29,7 @@ class Config():
         self.batch_size = 64
 
 def build_dict():
-    """
-    :param word_dict:
-    :return: word2id and tag2id
-    """
-
-    # 7 is the label of pad
-    tag2id = {'O': 0, 'B-PER': 1, 'I-PER': 2, 'B-ORG': 3, 'I-ORG': 4, 'B-LOC': 5, 'I-LOC': 6, 'PAD': 7}
+    tag2id = {'O': 0, 'B-PER': 1, 'I-PER': 2, 'B-ORG': 3, 'I-ORG': 4, 'B-LOC': 5, 'I-LOC': 6, 'PAD': 7, "START_TAG": 8, "STOP_TAG": 9}
     with open(os.path.join('./word2vec', 'vocab_word2idx.pkl'), 'rb') as f:
         word2id = pickle.load(f)
     return word2id, tag2id
