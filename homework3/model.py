@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-11-09 21:39:41
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-11-17 11:56:16
+LastEditTime: 2022-11-17 15:45:41
 FilePath: /guan/ucas/nlp/homework3/model.py
 Description: 
 
@@ -112,7 +112,7 @@ class BiLSTM_CRF(nn.Module):
         return best_path
 
 
-    def forward(self, sentence, length):  # 数据在模型中的正向传播
+    def forward(self, sentence):  # 数据在模型中的正向传播
         # 获得正向传播的emmison分数
         lstm_feats = self._get_lstm_features(sentence)
         # 找到最优路径

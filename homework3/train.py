@@ -61,25 +61,25 @@ class NERdataset(Dataset):
     def __len__(self):
         return len(self.label)
 
-def val(model, optimizer, dataloader):
+def val(model, optimizer, dataSet):
     model.eval()
     with torch.no_grad():
         logger.info(f'epoch start valding')
         preds, labels = [], []
-        for (sentence, tags, length) in dataloader:
+        for (sentence, tags, length) in dataSet:
             optimizer.zero_grad()
             sentence = sentence[:length]
             tags = tags[:length]
-            sentence, label = sentence.cuda(), label.cuda()
+            sentence, tags = sentence.cuda(), tags.cuda()
             best_path = model(sentence)
             preds.extend(best_path)
-            labels.extend(label)
+            labels.extend(tags.to('cpu'))
         preds = [pred.to('cpu').item() for pred in preds]
-        precision = precision_score(labels, preds, average='macro')
+        precision = precision_score(labels, preds, average='macro', zero_division=1)
         recall = recall_score(labels, preds, average='macro', zero_division=1)
-        f1 = f1_score(labels, preds, average='macro')
+        f1 = f1_score(labels, preds, average='macro', zero_division= 1)
         report = classification_report(labels, preds, zero_division=1)
-        print(report)
+        logger.info(f'\n{report}')
     return precision, recall, f1
 
 
@@ -144,4 +144,5 @@ if __name__ == '__main__':
     #     para.requires_grad = False
     logger.info('start training...')
     train(config, nerlstm, trainset, optimizer, testset)
+    # val(nerlstm, optimizer, testset)
 
