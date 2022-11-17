@@ -2,7 +2,7 @@
 Author: Jack Guan cnboyuguan@gmail.com
 Date: 2022-10-13 20:17:46
 LastEditors: Jack Guan cnboyuguan@gmail.com
-LastEditTime: 2022-11-12 20:12:39
+LastEditTime: 2022-11-15 21:13:15
 FilePath: /guan/ucas/nlp/homework3/word2vec.py
 Description: 
 
@@ -329,8 +329,8 @@ if __name__ == '__main__':
         max_window_size, num_noise_words, trainFile, testFile)
     with open( os.path.join(logDir,'vocab_word2idx.pkl') , 'wb') as f:
         pickle.dump(vocab.token_to_idx, f)
-    lr, num_epochs = 0.002, 5
-    net = getNet(len(vocab))
+    lr, num_epochs = 0.002, 20
+    net = getNet(len(vocab), 128)
     logger.info(f'Data prepared, len of vocab is {len(vocab)}')
     logger.info('Start training')
     loss = SigmoidBCELoss()

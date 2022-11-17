@@ -7,6 +7,9 @@ sampleSubmission.csv
 *data*
 *.zip
 mySubmission.csv 
+train2.py
+model2.py
+val.py
 *trainModel*
 trainModel.sh
 /homework3/word2vec/

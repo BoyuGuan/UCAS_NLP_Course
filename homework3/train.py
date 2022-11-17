@@ -63,44 +63,52 @@ class NERdataset(Dataset):
 
 def val(model, optimizer, dataloader):
     model.eval()
-    logger.info(f'epoch start valding')
-    preds, labels = [], []
-    for index, data in enumerate(dataloader):
-        optimizer.zero_grad()
-        corpus, label, length = data
-        corpus, label, length = corpus.cuda(), label.cuda(), length.cuda()
-        best_path_all = model(corpus, length)
-        for index, best_path in enumerate(best_path_all):
-            preds.extend(best_path[:length[index]])
-        for index, label_this_sentence in enumerate(label.tolist()):
-            labels.extend(label_this_sentence[:length[index]])
-    preds = [pred.to('cpu').item() for pred in preds]
-    precision = precision_score(labels, preds, average='macro')
-    recall = recall_score(labels, preds, average='macro', zero_division=1)
-    f1 = f1_score(labels, preds, average='macro')
-    report = classification_report(labels, preds, zero_division=1)
-    logger.info('\n {report}')
+    with torch.no_grad():
+        logger.info(f'epoch start valding')
+        preds, labels = [], []
+        for (sentence, tags, length) in dataloader:
+            optimizer.zero_grad()
+            sentence = sentence[:length]
+            tags = tags[:length]
+            sentence, label = sentence.cuda(), label.cuda()
+            best_path = model(sentence)
+            preds.extend(best_path)
+            labels.extend(label)
+        preds = [pred.to('cpu').item() for pred in preds]
+        precision = precision_score(labels, preds, average='macro')
+        recall = recall_score(labels, preds, average='macro', zero_division=1)
+        f1 = f1_score(labels, preds, average='macro')
+        report = classification_report(labels, preds, zero_division=1)
+        print(report)
     return precision, recall, f1
 
 
-def train(config, model, trainDataloader, optimizer, testDataloader):
+def train(config, model, trainDataset, optimizer, testDataset):
     best_f1 = 0.0
     for epoch in range(config.epochNum):
         model.train()
         logger.info(f'epoch: {epoch + 1} start training')
-        for index, data in enumerate(trainDataloader):
+        for index, (sentence, tags, length) in enumerate(trainDataset):
             optimizer.zero_grad()
-            sentence, tag, length = data
-            sentence, tag, length = sentence.cuda(), tag.cuda(), length.cuda()
-            loss = model.neg_log_likelihood(sentence, tag, length)
+            sentence = sentence[:length]
+            tags = tags[:length]
+            sentence, tags = sentence.cuda(), tags.cuda()
+            loss = model.neg_log_likelihood(sentence, tags)
+            a = loss.item()
+            if a < 0:
+                print('wrong!')
+                exit(0)
             loss.backward()
             optimizer.step()
-            if (index % 10 == 0):
-                logger.info(f'epoch: {epoch+1} step:{index}------------loss:{loss.item()}')
-        prec, rec, f1 = val(model, optimizer, testDataloader)
+            if (index % 640 == 0):
+                logger.info(f'epoch: {epoch+1} step:{index+1}------------loss:{loss.item()}')
+        prec, rec, f1 = val(model, optimizer, testDataset)
         if(f1 > best_f1):
-            torch.save(model, os.path.join(logDir, 'model.pkl'))
-            # break
+            logger.info(f'*********get the best f1, is {f1}, save model')
+            torch.save(model, os.path.join(logDir, 'model.pt'))
+            best_f1 = f1
+        else:
+            logger.info(f'epoch {epoch+1} finish, f1 is {f1}, not get the best f1')
 
 if __name__ == '__main__':
     config = Config()
@@ -115,27 +123,25 @@ if __name__ == '__main__':
     logger.addHandler(fileHandler)
     logger.addHandler(commandHandler)
 
-
-
     logger.info('loading data...')
+
     word2id, tag2id = build_dict()
     max_length = cal_max_length(config.data_dir)
     trainset = NERdataset(config.data_dir, 'train', word2id, tag2id, max_length)
-    trainDataloader = DataLoader(trainset, batch_size=config.batch_size)
+    # trainDataloader = DataLoader(trainset, batch_size=config.batch_size)
     testset = NERdataset(config.data_dir, 'test', word2id, tag2id, max_length)
-    testDataloader = DataLoader(testset, batch_size=config.batch_size)
+    # testDataloader = DataLoader(testset, batch_size=config.batch_size)
 
     logger.info('loading embedding...')
-    word2vecEmbedding = getNet(len(word2id))
+    word2vecEmbedding = getNet(len(word2id), config.embedding_dim)
     word2vecEmbedding.load_state_dict(torch.load(os.path.join('word2vec' ,'net.pt')))
     word2vecEmbedding = word2vecEmbedding[0].cuda()
-    # nerlstm = NERLSTM(config.embedding_dim, config.hidden_dim, word2vecEmbedding, config.dropout, word2id, tag2id).cuda()
     nerlstm = BiLSTM_CRF(config.embedding_dim, config.hidden_dim, word2vecEmbedding, tag2id).cuda()
     optimizer = SGD(nerlstm.parameters(), config.learning_rate, weight_decay=config.weight_decay)
 
     # 词向量嵌入层不再需要调整
-    for para in nerlstm.word_embeds.parameters():
-        para.requires_grad = False
+    # for para in nerlstm.word_embeds.parameters():
+    #     para.requires_grad = False
     logger.info('start training...')
-    train(config, nerlstm, trainDataloader, optimizer, testDataloader)
+    train(config, nerlstm, trainset, optimizer, testset)
 
